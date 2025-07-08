@@ -7,7 +7,7 @@
 
 ## 🌟 What is this?
 
-> A lightweight **WhatsApp bot** that integrates **Google’s Gemini AI** for automated, AI-powered conversations and task handling.
+> A lightweight **Python WhatsApp bot** that integrates **Google’s Gemini AI** for automated, AI-powered conversations and task handling.
 
 🧪 Built for personal use, experiments, and educational exploration.
 
