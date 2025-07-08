@@ -1,6 +1,6 @@
 # 🤖 Gemini WhatsApp Bot
 
-![Robin Chan & Nami Chwan](https://static.myfigurecollection.net/upload/pictures/2023/10/17/3785550.gif)  
+![Robin Chan & Nami Chan](https://static.myfigurecollection.net/upload/pictures/2023/10/17/3785550.gif)  
 ![Build Status](https://img.shields.io/badge/kress-well-yellow)
 
 ---
@@ -30,6 +30,7 @@
 
 - [ ] Add group support
 - [ ] Schedule-based message automation
-- [ ] Manual ON/OFF AI assistant
+- [x] Manual ON/OFF AI assistant
+- [ ] Add image generation
 
 
