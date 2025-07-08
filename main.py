@@ -32,8 +32,9 @@ load_dotenv()
 DB_PATH = os.getenv("DATABASE_PATH", "/var/lib/mybot/db.sqlite3")
 REDIS_URI = os.getenv("REDIS_URI")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-
-CHATBOT_ACTIVE = True
+SUDO = [num.strip() for num in os.getenv("SUDO", "").split(",") if num.strip()]
+PREFIX = os.getenv("PREFIX")
+MODE = os.getenv("MODE")
 
 genai.configure(api_key=GEMINI_API_KEY)
 
@@ -54,15 +55,7 @@ Also, Include necessary emojies to your messages to make them lively. You can mi
 """
 
 
-async def init_gemini():
-    global gemini_model
-    gemini_model = genai.GenerativeModel(
-        model_name="gemini-1.5-flash-002",
-        system_instruction=SYSTEM_PROMPT
-    )
-
 Prime = NewAClient(DB_PATH)
-
 redisc = Redis.from_url(REDIS_URI)
 
 
@@ -71,7 +64,43 @@ log.setLevel(logging.INFO)
 def interrupted(*_):
     event.set()
 
-Prime.commands = my_collections.Collection()
+async def init_gemini():
+    global gemini_model
+    gemini_model = genai.GenerativeModel(
+        model_name="gemini-1.5-flash-002",
+        system_instruction=SYSTEM_PROMPT
+    )
+
+# pm chatbot states on redis
+CHATBOT_KEY = "chatbot:active"
+CHATBOT_OVERRIDE_KEY = "chatbot:override"
+
+if redisc.get(CHATBOT_KEY) is None:
+    redisc.set(CHATBOT_KEY, "1")
+
+def get_override() -> str | None:
+    val = redisc.get(CHATBOT_OVERRIDE_KEY)
+    return val.decode() if val else None          # "on" / "off" / None
+
+def set_override(state: str | None) -> None:
+    """state = 'on', 'off', or None to clear"""
+    if state is None:
+        redisc.delete(CHATBOT_OVERRIDE_KEY)
+    else:
+        redisc.set(CHATBOT_OVERRIDE_KEY, state)
+
+def chatbot_is_active() -> bool:
+    override = get_override()
+    if override == "on":
+        return True
+    if override == "off":
+        return False
+    return is_night_time()
+
+# returns if current user is sudo or not
+def is_sudo(number: str) -> bool:
+    return number in SUDO
+
 
 @Prime.event(ConnectedEv)
 async def on_connected(_: NewAClient, __: ConnectedEv):
@@ -85,7 +114,7 @@ async def get_user_chat(user_id) -> ChatSession:
         history = json.loads(chat_data)
         return gemini_model.start_chat(history=history)
 
-    # Create new chat
+    # Create a new chat
     return gemini_model.start_chat()
 
 async def update_user_history(user_id, query: str, response_text: str):
@@ -128,12 +157,47 @@ async def on_message(cl: NewAClient, message: MessageEv):
     pushname = getattr(message.Info, "Pushname", "Bot User")
 
     if is_group:
-        return
+        return None
 
     if not text:
-        return
+        return None
 
-    if CHATBOT_ACTIVE and is_night_time():
+    command = text.split(" ")[0].strip().lower()
+    if command.startswith(PREFIX):
+        command_name = command[1:]
+        if (MODE == 'PUBLIC' or MODE == 'PRIVATE') and is_sudo(user_id):
+            match command_name:
+                case "chatbot":
+                    if not is_sudo(str(user_id)):
+                        return await cl.reply_message(
+                            "🚫 You’re not allowed to change the bot state.",
+                            quoted=message
+                        )
+
+                    parts = text.split()
+                    if len(parts) < 2 or parts[1].lower() not in ("on", "off", "auto"):
+                        return await cl.reply_message(
+                            f"Usage: {PREFIX}chatbot on|off|auto",
+                            quoted=message
+                        )
+
+                    action = parts[1].lower()
+                    match action:
+                        case "on":
+                            set_override("on")
+                            msg = "✅ Chatbot forced *ON* — it will answer even during the day."
+                        case "off":
+                            set_override("off")
+                            msg = "✅ Chatbot forced *OFF* — it will stay silent until you enable it."
+                        case "auto":
+                            set_override(None)
+                            msg = "🔄 Chatbot returned to *auto mode* (night‑only)."
+
+                    await cl.reply_message(msg, quoted=message)
+                    return None
+
+    # user dialogue when chatbot is active, returns None when chatbot is off
+    if (chatbot_is_active() and MODE=="PUBLIC") or is_sudo(user_id):
         chat = await get_user_chat(user_id)
         response = chat.send_message(text)
         reply_text = response.text.strip()
@@ -144,6 +208,8 @@ async def on_message(cl: NewAClient, message: MessageEv):
 
         asyncio.create_task(update_user_history(user_id, text, reply_text))
 
+
+    return None
 
 
 @Prime.event(PairStatusEv)
