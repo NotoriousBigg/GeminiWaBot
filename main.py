@@ -9,7 +9,6 @@ from neonize.events import event, ConnectedEv, MessageEv, PairStatusEv
 from dotenv import load_dotenv
 import google.generativeai as genai
 from redis import Redis
-
 import logging
 import sys
 import os
@@ -20,7 +19,7 @@ tz = pytz.timezone("Africa/Nairobi")
 
 
 def is_night_time():
-    """Check if current time is between 8 PM and 6 AM"""
+    """Check if the current time is between 8 PM and 6 AM"""
     now = datetime.now(tz).time()
     night_start = time(20, 0)  # 8 PM
     night_end = time(6, 0)  # 6 AM
@@ -39,6 +38,8 @@ CHATBOT_ACTIVE = True
 genai.configure(api_key=GEMINI_API_KEY)
 
 gemini_model = None
+
+# change this to anything you want.
 SYSTEM_PROMPT = """
 You are Kresswell's personal AI assistant. Your job is to act on Kresswell’s behalf when he’s not available. You're friendly, approachable, and helpful — like a trusted digital version of him.
 
@@ -136,13 +137,12 @@ async def on_message(cl: NewAClient, message: MessageEv):
         chat = await get_user_chat(user_id)
         response = chat.send_message(text)
         reply_text = response.text.strip()
-        await Prime.reply_message(
+        await cl.reply_message(
             reply_text,
             quoted=message
         )
 
         asyncio.create_task(update_user_history(user_id, text, reply_text))
-
 
 
 
@@ -153,14 +153,15 @@ async def PairStatusMessage(_: NewAClient, message: PairStatusEv):
 async def pair_phone():
     if await Prime.is_connected:
         return
-    await Prime.PairPhone("254798242085", show_push_notification=True)
+    phone = int(input("Enter your phone number without the + sign: "))
+
+    await Prime.PairPhone(str(phone), show_push_notification=True)
 
 async def start_bot():
     asyncio.create_task(init_gemini())
     await pair_phone()
     await Prime.connect()
 
-    # ✅ This keeps the loop alive
     while True:
         await asyncio.sleep(3600)
 
